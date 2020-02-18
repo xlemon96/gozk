@@ -1,2 +1,2 @@
 # gozk
-zookeeper of go
+go zookeeper
