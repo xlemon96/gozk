@@ -13,7 +13,7 @@ import (
  */
 
 type PrepRequestProcessor struct {
-	//zk server
+	//zkserver
 	zookeeperServer *ZookeeperServer
 
 	nextProcessor ProcessorInterface
@@ -28,52 +28,54 @@ type PrepRequestProcessor struct {
 func NewPrepRequestProcessor(zookeeperServer *ZookeeperServer) *PrepRequestProcessor {
 	prepRequestProcessor := &PrepRequestProcessor{
 		zookeeperServer: zookeeperServer,
+		requestsChan:    make(chan *Request),
+		stopChan:        make(chan struct{}),
 	}
 	return prepRequestProcessor
 }
 
-func (this *PrepRequestProcessor) Run() {
-	go this.loop()
+func (s *PrepRequestProcessor) Run() {
+	go s.loop()
 }
 
-func (this *PrepRequestProcessor) loop() {
+func (s *PrepRequestProcessor) loop() {
 	for {
 		select {
-		case req := <-this.requestsChan:
-			this.pRequest(req)
-		case <-this.stopChan:
-			close(this.requestsChan)
+		case req := <-s.requestsChan:
+			s.pRequest(req)
+		case <-s.stopChan:
+			close(s.requestsChan)
 			break
 		}
 	}
 }
 
-func (this *PrepRequestProcessor) pRequest(request *Request) {
+func (s *PrepRequestProcessor) pRequest(request *Request) {
 	switch request.Type {
 	case OpCreate:
 		createReq := &message.CreateRequest{}
 		_, _ = message.Decode(request.Data, createReq)
-		this.pRequest2Txn(request, this.zookeeperServer.GetNextZxid(), createReq)
+		s.pRequest2Txn(request, s.zookeeperServer.GetNextZxid(), createReq)
 	case OpCreateSession:
 	case OpCloseSession:
 
 	}
-	request.Zxid = this.zookeeperServer.GetNextZxid()
-	this.nextProcessor.ProcessRequest(request)
+	request.Zxid = s.zookeeperServer.GetNextZxid()
+	s.nextProcessor.ProcessRequest(request)
 }
 
-func (this *PrepRequestProcessor) pRequest2Txn(request *Request, zxid int64, req interface{})  {
+func (s *PrepRequestProcessor) pRequest2Txn(request *Request, zxid int64, req interface{}) {
 	switch request.Type {
 	case OpCreate:
 		req = req.(*message.CreateRequest)
-		this.zookeeperServer.SessionTracker.CheckSession(request.SessionId, request.Owner)
+		s.zookeeperServer.SessionTracker.CheckSession(request.SessionId, request.Owner)
 	}
 }
 
-func (this *PrepRequestProcessor) ProcessRequest(request *Request) {
-	this.requestsChan <- request
+func (s *PrepRequestProcessor) ProcessRequest(request *Request) {
+	s.requestsChan <- request
 }
 
-func (this *PrepRequestProcessor) ShutDown() {
-	this.stopChan <- struct{}{}
+func (s *PrepRequestProcessor) ShutDown() {
+	s.stopChan <-struct{}{}
 }

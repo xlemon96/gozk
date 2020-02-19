@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/binary"
 	"fmt"
+	"gozk/persistence"
 	"net"
 	"sync"
 	"time"
@@ -27,6 +28,7 @@ type ZookeeperServer struct {
 	SessionTracker     *session.SessionTracker
 	State              int
 	FirstProcessor     ProcessorInterface
+	FileTxnLog         *persistence.FileTxnLog
 	//todo
 	//private FileTxnSnapLog txnLogFactory = null
 	//private ZKDatabase zkDb

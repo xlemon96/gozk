@@ -1,5 +1,7 @@
 package server
 
+import "gozk/txn"
+
 /**
  * @Author: jiajianyun@jd.com
  * @Description:
@@ -14,8 +16,8 @@ type Request struct {
 	Type      int32
 	Data      []byte
 	Protocol  *Protolcol
-	//TxnHeader hdr
-	//Record txn
+	TxnHeader *txn.TxnHeader
+	Record    interface{}
 	//List<Id> authInfo
 	Zxid       int64
 	CreateTime int64

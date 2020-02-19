@@ -25,7 +25,7 @@ type FileTxnLog struct {
 	buf            []byte
 }
 
-func (p *FileTxnLog) append(txnHeader *txn.TxnHeader, record interface{}) bool {
+func (p *FileTxnLog) Append(txnHeader *txn.TxnHeader, record interface{}) bool {
 	var err error
 	if txnHeader == nil {
 		return false
@@ -74,7 +74,7 @@ func (p *FileTxnLog) append(txnHeader *txn.TxnHeader, record interface{}) bool {
 	return true
 }
 
-func (p *FileTxnLog) rollLog() error {
+func (p *FileTxnLog) RollLog() error {
 	if p.logBuf != nil {
 		if err := p.logBuf.Flush(); err != nil {
 			return err
@@ -84,7 +84,11 @@ func (p *FileTxnLog) rollLog() error {
 	return nil
 }
 
-func (p *FileTxnLog) close() error {
+func (p *FileTxnLog) Commit()  {
+
+}
+
+func (p *FileTxnLog) Close() error {
 	if p.logBuf != nil {
 		if err := p.logBuf.Flush(); err != nil {
 			return err
