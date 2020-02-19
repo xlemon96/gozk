@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/binary"
 	"fmt"
+	"net"
 	"sync"
 	"time"
 
@@ -55,6 +56,18 @@ func NewZookeeperServer(minSessionTimeout, maxSessionTimeout int32, expirationIn
 	}
 	zookeeperServer.CreateSessionTracker()
 	return zookeeperServer
+}
+
+func (this *ZookeeperServer) Run() error {
+	this.CreateSessionTracker()
+	this.StartSessionTracker()
+	listener, _ := net.Listen("tcp", ":2181")
+	handler := &Handler{ZookeeperServer: this}
+	err := TCPServer(listener, handler)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func (this *ZookeeperServer) CreateSessionTracker() {
@@ -123,7 +136,7 @@ func (this *ZookeeperServer) processConnectRequest(innerReq *InnerRequest) {
 	if sessionId != 0 {
 		//todo,客户端尝试重置session，server端不允许
 	}
-	this.createSession(innerReq.Protolcol, connectReq.Passwd, connectReq.TimeOut)
+	this.createSession(innerReq.Protolcol, connectReq.Password, connectReq.TimeOut)
 }
 
 func (this *ZookeeperServer) createSession(protolcol *Protolcol, password []byte, sessionTimeout int32) {
@@ -164,7 +177,7 @@ func (this *ZookeeperServer) finishSessionInit(protolcol *Protolcol) error {
 		ProtocolVersion: 0,
 		TimeOut:         protolcol.SessionTimeout,
 		SessionID:       protolcol.SessionId,
-		Passwd:          nil,
+		Password:        nil,
 	}
 	n, err := message.EncodePacket(buf[4:], resp)
 	if err != nil {

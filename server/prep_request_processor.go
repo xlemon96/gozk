@@ -53,7 +53,7 @@ func (this *PrepRequestProcessor) pRequest(request *Request) {
 	case OpCreate:
 		createReq := &message.CreateRequest{}
 		_, _ = message.Decode(request.Data, createReq)
-		this.pRequest2Txn(request, 0, createReq)
+		this.pRequest2Txn(request, this.zookeeperServer.GetNextZxid(), createReq)
 	case OpCreateSession:
 	case OpCloseSession:
 

@@ -13,12 +13,12 @@ type ConnectRequest struct {
 	LastZxidSeen    int64
 	TimeOut         int32
 	SessionID       int64
-	Passwd          []byte
+	Password        []byte
 }
 
 type ConnectResponse struct {
 	ProtocolVersion int32
 	TimeOut         int32
 	SessionID       int64
-	Passwd          []byte
+	Password        []byte
 }
