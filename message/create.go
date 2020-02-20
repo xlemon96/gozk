@@ -11,6 +11,10 @@ package message
 type CreateRequest struct {
 	Path  string
 	Data  []byte
-	Acl   []ACL
+	Acl   []*ACL
 	Flags int32
+}
+
+type CreateResponse struct {
+	Path string
 }

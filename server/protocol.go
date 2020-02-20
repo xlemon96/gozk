@@ -2,9 +2,11 @@ package server
 
 import (
 	"bufio"
-	"encoding/binary"
 	"io"
 	"net"
+	"encoding/binary"
+
+	"gozk/message"
 )
 
 /**
@@ -25,6 +27,7 @@ type Protolcol struct {
 	Me              struct{}
 	SessionId       int64
 	SessionTimeout  int32
+	AuthInfo        []*message.ID
 }
 
 type InnerRequest struct {
@@ -44,37 +47,37 @@ func NewProtolcol(zookeeperServer *ZookeeperServer, conn net.Conn) *Protolcol {
 	return protocol
 }
 
-func (this *Protolcol) Loop() {
-	go this.ReadRequestLoop()
+func (s *Protolcol) Loop() {
+	go s.ReadRequestLoop()
 	for {
 		select {
-		case req := <-this.requestChan:
-			this.zookeeperServer.ProcessRequest(req)
+		case req := <-s.requestChan:
+			s.zookeeperServer.ProcessRequest(req)
 		}
 	}
 }
 
-func (this *Protolcol) ReadRequestLoop() {
+func (s *Protolcol) ReadRequestLoop() {
 	for {
-		length, _ := this.ReadRequestLength()
-		innerRequest, _ := this.ReadRequest(length)
-		this.requestChan <- innerRequest
+		length, _ := s.ReadRequestLength()
+		innerRequest, _ := s.ReadRequest(length)
+		s.requestChan <- innerRequest
 	}
 }
 
 //数据包得前四个字节为包长度
-func (this *Protolcol) ReadRequestLength() (int32, error) {
+func (s *Protolcol) ReadRequestLength() (int32, error) {
 	var length int32
-	err := binary.Read(this.reader, binary.BigEndian, &length)
+	err := binary.Read(s.reader, binary.BigEndian, &length)
 	if err != nil {
 		return -1, err
 	}
 	return length, nil
 }
 
-func (this *Protolcol) ReadRequest(length int32) (*InnerRequest, error) {
+func (s *Protolcol) ReadRequest(length int32) (*InnerRequest, error) {
 	requestBytes := make([]byte, length)
-	n, err := io.ReadFull(this.reader, requestBytes)
+	n, err := io.ReadFull(s.reader, requestBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -84,7 +87,38 @@ func (this *Protolcol) ReadRequest(length int32) (*InnerRequest, error) {
 	}
 	innerRequest := &InnerRequest{
 		Data:      requestBytes,
-		Protolcol: this,
+		Protolcol: s,
 	}
 	return innerRequest, nil
+}
+
+func (s *Protolcol) SendResponse(rh *message.ReplyHeader, cr interface{}) {
+	buf := make([]byte, 256)
+	n1, err := message.EncodePacket(buf[4:], rh)
+	if err != nil {
+		return
+	}
+	n2, err := message.EncodePacket(buf[4+n1:], cr)
+	if err != nil {
+		return
+	}
+	binary.BigEndian.PutUint32(buf[0:3], uint32(n1+n2))
+	_, err = s.conn.Write(buf[:n1+n2+4])
+	if err != nil {
+		return
+	}
+}
+
+func (s *Protolcol) Process(event *WatcherEvent) {
+	replyHeader := &message.ReplyHeader{
+		Xid:  -1,
+		Zxid: -1,
+		Err:  0,
+	}
+	e := &Event{
+		Type:  int32(event.Type),
+		State: int32(event.State),
+		Path:  event.Path,
+	}
+	s.SendResponse(replyHeader, e)
 }

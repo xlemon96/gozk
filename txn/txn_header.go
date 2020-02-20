@@ -10,8 +10,8 @@ package txn
 
 type TxnHeader struct {
 	ClientId int64
-	Cxid     int64
+	Cxid     int32
 	Zxid     int64
 	Time     int64
-	OpType   int
+	Type     int32
 }

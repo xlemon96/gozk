@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"gozk/message"
+	"gozk/txn"
 )
 
 /**
@@ -17,9 +18,22 @@ import (
 
 type DataTree struct {
 	sync.RWMutex
-	Nodes      map[string]*DataNode //所有tree node，key是path："/test/data/test"，value是node指针
-	Ephemerals map[int64][]string   //临时节点，key是session id，value是path切片，包含此session创建的所有临时节点
-	Root       *DataNode            //根节点
+	Nodes             map[string]*DataNode //所有tree node，key是path："/test/data/test"，value是node指针
+	Ephemerals        map[int64][]string   //临时节点，key是session id，value是path切片，包含此session创建的所有临时节点
+	Root              *DataNode            //根节点
+	DataWatches       *WatchManager
+	ChildWatches      *WatchManager
+	LastProcessedZxid int64
+}
+
+type ProcessTxnResult struct {
+	ClientId int64
+	Cxid     int32
+	Zxid     int64
+	Err      int32
+	Type     int32
+	Path     string
+	Stat     *Stat
 }
 
 func NewDataTree() *DataTree {
@@ -39,8 +53,8 @@ func NewDataTree() *DataTree {
 	return dataTree
 }
 
-func (this *DataTree) GetEphemerals(sessionId int64) []string {
-	ephemerals, ok := this.Ephemerals[sessionId]
+func (s *DataTree) GetEphemerals(sessionId int64) []string {
+	ephemerals, ok := s.Ephemerals[sessionId]
 	if !ok {
 		result := make([]string, 0)
 		return result
@@ -48,58 +62,58 @@ func (this *DataTree) GetEphemerals(sessionId int64) []string {
 	return ephemerals
 }
 
-func (this *DataTree) GetEphemeralsMap() map[int64][]string {
-	return this.Ephemerals
+func (s *DataTree) GetEphemeralsMap() map[int64][]string {
+	return s.Ephemerals
 }
 
-func (this *DataTree) GetSessions() []int64 {
+func (s *DataTree) GetSessions() []int64 {
 	sessions := make([]int64, 0)
-	for key, _ := range this.Ephemerals {
+	for key, _ := range s.Ephemerals {
 		sessions = append(sessions, key)
 	}
 	return sessions
 }
 
-func (this *DataTree) AddDataNode(path string, dataNode *DataNode) {
-	this.Lock()
-	defer this.Unlock()
-	this.Nodes[path] = dataNode
+func (s *DataTree) AddDataNode(path string, dataNode *DataNode) {
+	s.Lock()
+	defer s.Unlock()
+	s.Nodes[path] = dataNode
 }
 
-func (this *DataTree) GetDataNode(path string) *DataNode {
-	this.Lock()
-	defer this.Unlock()
-	return this.Nodes[path]
+func (s *DataTree) GetDataNode(path string) *DataNode {
+	s.Lock()
+	defer s.Unlock()
+	return s.Nodes[path]
 }
 
-func (this *DataTree) GetNodeCount() int {
-	this.Lock()
-	defer this.Unlock()
-	return len(this.Nodes)
+func (s *DataTree) GetNodeCount() int {
+	s.Lock()
+	defer s.Unlock()
+	return len(s.Nodes)
 }
 
-func (this *DataTree) GetEphemeralsCount() int {
+func (s *DataTree) GetEphemeralsCount() int {
 	var result int
-	for _, ephemeral := range this.Ephemerals {
+	for _, ephemeral := range s.Ephemerals {
 		result += len(ephemeral)
 	}
 	return result
 }
 
-func (this *DataTree) ApproximateDataSize() int64 {
+func (s *DataTree) ApproximateDataSize() int64 {
 	//todo
 	return 0
 }
 
-func (this *DataTree) IsSpecialPath(path string) bool {
+func (s *DataTree) IsSpecialPath(path string) bool {
 	if path == "/" {
 		return false
 	}
 	return true
 }
 
-func (this *DataTree) CreateNode(path string, data []byte, acl []*message.ACL, ephemeralOwner int64,
-	parentCVersion int, zxid int64, time int64) {
+func (s *DataTree) CreateNode(path string, data []byte, acl []*message.ACL, ephemeralOwner int64,
+	parentCVersion int32, zxid int64, time int64) {
 
 	lastSlash := strings.LastIndex(path, "/")
 	parentName := path[:lastSlash]
@@ -114,9 +128,9 @@ func (this *DataTree) CreateNode(path string, data []byte, acl []*message.ACL, e
 		EphemeralOwner: ephemeralOwner,
 		Pzxid:          zxid,
 	}
-	this.Lock()
-	defer this.Unlock()
-	parentNode, ok := this.Nodes[parentName]
+	s.Lock()
+	defer s.Unlock()
+	parentNode, ok := s.Nodes[parentName]
 	if !ok {
 		//todo,error待定义
 		return
@@ -128,6 +142,13 @@ func (this *DataTree) CreateNode(path string, data []byte, acl []*message.ACL, e
 			return
 		}
 	}
+	if parentCVersion == -1 {
+		parentCVersion = parentNode.Stat.Cversion
+		parentCVersion++
+	}
+	parentNode.Stat.Cversion = parentCVersion //在预处理器已经加一，此处直接赋值即可
+	parentNode.Stat.Pzxid = zxid
+	//todo，需要处理acl
 	childrenNode := &DataNode{
 		Parent:   parentNode,
 		Data:     data,
@@ -136,31 +157,35 @@ func (this *DataTree) CreateNode(path string, data []byte, acl []*message.ACL, e
 		Stat:     stat,
 	}
 	parentNode.AddChildren(childName)
-	this.Nodes[path] = childrenNode
+	s.Nodes[path] = childrenNode
 	if ephemeralOwner != 0 {
-		ephemeral, ok := this.Ephemerals[ephemeralOwner]
+		ephemeral, ok := s.Ephemerals[ephemeralOwner]
 		if !ok {
 			ephemeral = make([]string, 0)
-			this.Ephemerals[ephemeralOwner] = ephemeral
+			s.Ephemerals[ephemeralOwner] = ephemeral
 		}
-		this.Ephemerals[ephemeralOwner] = append(this.Ephemerals[ephemeralOwner], path)
+		s.Ephemerals[ephemeralOwner] = append(s.Ephemerals[ephemeralOwner], path)
 	}
-	//todo,quota
+	s.DataWatches.TriggerWatch(path, EventNodeCreated)
+	if parentName == "" {
+		parentName = "/"
+	}
+	s.ChildWatches.TriggerWatch(parentName, EventNodeChildrenChanged)
 }
 
-func (this *DataTree) DeleteNode(path string, zxid int64) {
+func (s *DataTree) DeleteNode(path string, zxid int64) {
 	lastSlash := strings.LastIndex(path, "/")
 	parentName := path[:lastSlash]
 	childName := path[lastSlash+1:]
-	this.Lock()
-	defer this.Unlock()
-	node, ok := this.Nodes[path]
+	s.Lock()
+	defer s.Unlock()
+	node, ok := s.Nodes[path]
 	if !ok {
 		//todo
 		return
 	}
-	delete(this.Nodes, path)
-	parentNode, ok := this.Nodes[parentName]
+	delete(s.Nodes, path)
+	parentNode, ok := s.Nodes[parentName]
 	if !ok {
 		//todo
 		return
@@ -174,23 +199,29 @@ func (this *DataTree) DeleteNode(path string, zxid int64) {
 	parentNode.Stat.Pzxid = zxid
 	eowner := node.Stat.EphemeralOwner
 	if eowner != 0 {
-		ephemerals := this.Ephemerals[eowner]
+		ephemerals := s.Ephemerals[eowner]
 		if ephemerals != nil {
 			for index, ephemeral := range ephemerals {
 				if ephemeral == path {
-					this.Ephemerals[eowner] = append(ephemerals[:index], ephemerals[index+1:]...)
+					s.Ephemerals[eowner] = append(ephemerals[:index], ephemerals[index+1:]...)
 					break
 				}
 			}
 		}
 	}
 	node = nil
+	if parentName == "" {
+		parentName = "/"
+	}
+	//todo,与原版此处不一样
+	s.DataWatches.TriggerWatch(path, EventNodeCreated)
+	s.ChildWatches.TriggerWatch(parentName, EventNodeChildrenChanged)
 }
 
-func (this *DataTree) SetData(path string, data []byte, zxid, time int64, version int32) {
-	this.Lock()
-	defer this.Unlock()
-	node, ok := this.Nodes[path]
+func (s *DataTree) SetData(path string, data []byte, zxid, time int64, version int32) {
+	s.Lock()
+	defer s.Unlock()
+	node, ok := s.Nodes[path]
 	if !ok {
 		//todo
 		return
@@ -199,26 +230,195 @@ func (this *DataTree) SetData(path string, data []byte, zxid, time int64, versio
 	node.Stat.Mtime = time
 	node.Stat.Mzxid = zxid
 	node.Stat.Version = version
+	s.DataWatches.TriggerWatch(path, EventNodeDataChanged)
 }
 
-func (this *DataTree) GetData(path string) []byte {
-	this.Lock()
-	defer this.Unlock()
-	node, ok := this.Nodes[path]
+func (s *DataTree) GetData(path string, stat *Stat, protolcol *Protolcol) []byte {
+	s.Lock()
+	defer s.Unlock()
+	node, ok := s.Nodes[path]
 	if !ok {
 		//todo
 		return nil
+	}
+	//todo,更新node状态
+	if protolcol != nil {
+		s.DataWatches.AddWatch(path, protolcol)
 	}
 	return node.Data
 }
 
-func (this *DataTree) GetChildren(path string)[]string {
-	this.Lock()
-	defer this.Unlock()
-	node, ok := this.Nodes[path]
+func (s *DataTree) StatNode(path string, protolcol *Protolcol) *Stat {
+	s.Lock()
+	defer s.Unlock()
+	node, ok := s.Nodes[path]
 	if !ok {
 		//todo
 		return nil
 	}
+	//todo,更新node状态
+	if protolcol != nil {
+		s.DataWatches.AddWatch(path, protolcol)
+	}
+	return node.Stat
+}
+
+func (s *DataTree) GetChildren(path string, stat *Stat, protolcol *Protolcol) []string {
+	s.Lock()
+	defer s.Unlock()
+	node, ok := s.Nodes[path]
+	if !ok {
+		//todo
+		return nil
+	}
+	//todo,跟新配置
+	if protolcol != nil {
+		s.ChildWatches.AddWatch(path, protolcol)
+	}
 	return node.Children
+}
+
+func (s *DataTree) processTxn(header *txn.TxnHeader, record interface{}) *ProcessTxnResult {
+	result := &ProcessTxnResult{
+		ClientId: header.ClientId,
+		Cxid:     header.Cxid,
+		Zxid:     header.Zxid,
+		Err:      0,
+		Type:     header.Type,
+	}
+	switch header.Type {
+	case OpCreate:
+		createTxn := record.(*txn.CreateTxn)
+		result.Path = createTxn.Path
+		var ephemeralOwner int64
+		if !createTxn.Ephemeral {
+			ephemeralOwner = result.ClientId
+		} else {
+			ephemeralOwner = 0
+		}
+		s.CreateNode(createTxn.Path, createTxn.Data, createTxn.Acl, ephemeralOwner, createTxn.ParentCVersion,
+			header.Zxid, header.Time)
+	case OpDelete:
+		deleteTxn := record.(*txn.DeleteTxn)
+		result.Path = deleteTxn.Path
+		s.DeleteNode(deleteTxn.Path, header.Zxid)
+	case OpSetData:
+		setDataTxn := record.(*txn.SetDataTxn)
+		result.Path = setDataTxn.Path
+		s.SetData(setDataTxn.Path, setDataTxn.Data, header.Time, header.Zxid, setDataTxn.Version)
+	case OpSetACL:
+	case OpCloseSession:
+		s.killSession(header.ClientId, header.Zxid)
+	case OpError:
+		errTxn := record.(*txn.ErrorTxn)
+		result.Err = errTxn.Err
+	case OpCheck:
+		checkTxn := record.(*txn.CheckVersionTxn)
+		result.Path = checkTxn.Path
+	case OpMulti:
+		//todo
+	}
+	if result.Zxid > s.LastProcessedZxid {
+		s.LastProcessedZxid = result.Zxid
+	}
+	//todo
+	//if (header.getType() == OpCode.create &&
+	//	rc.err == Code.NODEEXISTS.intValue()) {
+	//	LOG.debug("Adjusting parent cversion for Txn: " + header.getType() +
+	//		" path:" + rc.path + " err: " + rc.err);
+	//	int lastSlash = rc.path.lastIndexOf('/');
+	//	String parentName = rc.path.substring(0, lastSlash);
+	//	CreateTxn cTxn = (CreateTxn)txn;
+	//	try {
+	//		setCversionPzxid(parentName, cTxn.getParentCVersion(),
+	//			header.getZxid());
+	//	} catch (KeeperException.NoNodeException e) {
+	//		LOG.error("Failed to set parent cversion for: " +
+	//			parentName, e);
+	//		rc.err = e.code().intValue();
+	//	}
+	//} else if (rc.err != Code.OK.intValue()) {
+	//	LOG.debug("Ignoring processTxn failure hdr: " + header.getType() +
+	//		" : error: " + rc.err);
+	//}
+	return result
+}
+
+func (s *DataTree) killSession(sessionId, zxid int64) {
+	paths, ok := s.Ephemerals[sessionId]
+	if ok {
+		delete(s.Ephemerals, sessionId)
+		for _, path := range paths {
+			s.DeleteNode(path, zxid)
+		}
+	}
+}
+
+func (s *DataTree) removeProtocol(protolcol *Protolcol) {
+	s.DataWatches.RemoveWatch(protolcol)
+	s.ChildWatches.RemoveWatch(protolcol)
+}
+
+func (s *DataTree) clear() {
+	s.Root = nil
+	s.Nodes = make(map[string]*DataNode)
+	s.Ephemerals = make(map[int64][]string)
+}
+
+func (s *DataTree) setWatches(relativeZxid int64, dataWatches, existWatches, childWatches []string, protolcol *Protolcol) {
+	for _, path := range dataWatches {
+		node,ok := s.Nodes[path]
+		if !ok {
+			event := &WatcherEvent{
+				Type:  EventNodeDeleted,
+				State: StateConnected,
+				Path:  path,
+			}
+			protolcol.Process(event)
+		} else if node.Stat.Mzxid > relativeZxid {
+			event := &WatcherEvent{
+				Type:  EventNodeDataChanged,
+				State: StateConnected,
+				Path:  path,
+			}
+			protolcol.Process(event)
+		} else {
+			s.DataWatches.AddWatch(path, protolcol)
+		}
+	}
+
+	for _, path := range existWatches {
+		_,ok := s.Nodes[path]
+		if ok {
+			event := &WatcherEvent{
+				Type:  EventNodeCreated,
+				State: StateConnected,
+				Path:  path,
+			}
+			protolcol.Process(event)
+		} else {
+			s.DataWatches.AddWatch(path, protolcol)
+		}
+	}
+
+	for _, path := range childWatches {
+		node,ok := s.Nodes[path]
+		if !ok {
+			event := &WatcherEvent{
+				Type:  EventNodeDeleted,
+				State: StateConnected,
+				Path:  path,
+			}
+			protolcol.Process(event)
+		} else if node.Stat.Mzxid > relativeZxid {
+			event := &WatcherEvent{
+				Type:  EventNodeChildrenChanged,
+				State: StateConnected,
+				Path:  path,
+			}
+			protolcol.Process(event)
+		} else {
+			s.ChildWatches.AddWatch(path, protolcol)
+		}
+	}
 }

@@ -2,6 +2,8 @@ package server
 
 import (
 	"gozk/message"
+	"gozk/txn"
+	"time"
 )
 
 /**
@@ -25,12 +27,13 @@ type PrepRequestProcessor struct {
 	stopChan chan struct{}
 }
 
-func NewPrepRequestProcessor(zookeeperServer *ZookeeperServer) *PrepRequestProcessor {
+func NewPrepRequestProcessor(zookeeperServer *ZookeeperServer, processor *SyncRequestProcessor) *PrepRequestProcessor {
 	prepRequestProcessor := &PrepRequestProcessor{
 		zookeeperServer: zookeeperServer,
 		requestsChan:    make(chan *Request),
 		stopChan:        make(chan struct{}),
 	}
+	prepRequestProcessor.nextProcessor = processor
 	return prepRequestProcessor
 }
 
@@ -44,7 +47,6 @@ func (s *PrepRequestProcessor) loop() {
 		case req := <-s.requestsChan:
 			s.pRequest(req)
 		case <-s.stopChan:
-			close(s.requestsChan)
 			break
 		}
 	}
@@ -65,6 +67,13 @@ func (s *PrepRequestProcessor) pRequest(request *Request) {
 }
 
 func (s *PrepRequestProcessor) pRequest2Txn(request *Request, zxid int64, req interface{}) {
+	request.TxnHeader = &txn.TxnHeader{
+		ClientId: request.SessionId,
+		Cxid:     request.Cxid,
+		Zxid:     request.Zxid,
+		Type:     request.Type,
+		Time:     time.Now().UnixNano(),
+	}
 	switch request.Type {
 	case OpCreate:
 		req = req.(*message.CreateRequest)
@@ -77,5 +86,5 @@ func (s *PrepRequestProcessor) ProcessRequest(request *Request) {
 }
 
 func (s *PrepRequestProcessor) ShutDown() {
-	s.stopChan <-struct{}{}
+	s.stopChan <- struct{}{}
 }

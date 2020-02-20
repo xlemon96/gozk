@@ -48,19 +48,19 @@ func decodePacketValue(buf []byte, v reflect.Value) (int, error) {
 		v.SetBool(buf[n] != 0)
 		n++
 	case reflect.Int32:
-		v.SetInt(int64(binary.BigEndian.Uint32(buf[n : n+4])))
+		v.SetInt(int64(binary.BigEndian.Uint32(buf[n:n+4])))
 		n += 4
 	case reflect.Int64:
-		v.SetInt(int64(binary.BigEndian.Uint64(buf[n : n+8])))
+		v.SetInt(int64(binary.BigEndian.Uint64(buf[n:n+8])))
 		n += 8
 	case reflect.String:
-		ln := int(binary.BigEndian.Uint32(buf[n : n+4]))
-		v.SetString(string(buf[n+4 : n+4+ln]))
+		ln := int(binary.BigEndian.Uint32(buf[n:n+4]))
+		v.SetString(string(buf[n+4:n+4+ln]))
 		n += 4 + ln
 	case reflect.Slice:
 		switch v.Type().Elem().Kind() {
 		default:
-			count := int(binary.BigEndian.Uint32(buf[n : n+4]))
+			count := int(binary.BigEndian.Uint32(buf[n:n+4]))
 			n += 4
 			values := reflect.MakeSlice(v.Type(), count, count)
 			v.Set(values)
@@ -72,7 +72,7 @@ func decodePacketValue(buf []byte, v reflect.Value) (int, error) {
 				}
 			}
 		case reflect.Uint8:
-			ln := int(int32(binary.BigEndian.Uint32(buf[n : n+4])))
+			ln := int(int32(binary.BigEndian.Uint32(buf[n:n+4])))
 			if ln < 0 {
 				n += 4
 				v.SetBytes(nil)

@@ -8,8 +8,12 @@ package message
  * @Date: 2020/2/16 12:42 下午
  */
 
-type ACL struct {
-	Perms  int32
+type ID struct {
 	Scheme string
 	ID     string
+}
+
+type ACL struct {
+	ID
+	Perms int32
 }

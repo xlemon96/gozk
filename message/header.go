@@ -12,3 +12,9 @@ type RequestHeader struct {
 	Xid  int32
 	Type int32
 }
+
+type ReplyHeader struct {
+	Xid  int32
+	Zxid int64
+	Err  int32
+}

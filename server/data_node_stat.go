@@ -21,4 +21,3 @@ type Stat struct {
 	NumChildren    int32 // The number of children of this znode.
 	Pzxid          int64 // last modified children
 }
-

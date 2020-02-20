@@ -23,12 +23,13 @@ type SyncRequestProcessor struct {
 	snapProcessState int //0未开始，1 已经开始
 }
 
-func NewSyncRequestProcessor(zookeeperServer *ZookeeperServer) *SyncRequestProcessor {
+func NewSyncRequestProcessor(zookeeperServer *ZookeeperServer, processor *FinalRequestProcessor) *SyncRequestProcessor {
 	syncRequestProcessor := &SyncRequestProcessor{
 		zookeeperServer: zookeeperServer,
 		requestsChan:    make(chan *Request),
 		stopChan:        make(chan struct{}),
 		toFlush:         make([]*Request, 0),
+		nextProcessor:   processor,
 	}
 	return syncRequestProcessor
 }
@@ -60,6 +61,7 @@ func (s *SyncRequestProcessor) loop() {
 						}()
 					}
 				}
+				//若tuFlush压力不大，则直接处理，否则批量处理
 			} else if len(s.toFlush) == 0 {
 				s.nextProcessor.ProcessRequest(request)
 				continue
@@ -81,7 +83,10 @@ func (s *SyncRequestProcessor) flush() {
 	if len(s.toFlush) == 0 {
 		return
 	}
-	s.zookeeperServer.FileTxnLog.Commit()
+	if err := s.zookeeperServer.FileTxnLog.Commit(); err != nil {
+		//todo
+		return
+	}
 	for _, req := range s.toFlush {
 		if s.nextProcessor != nil {
 			s.nextProcessor.ProcessRequest(req)

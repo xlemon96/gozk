@@ -21,7 +21,7 @@ func (p *FilePadding) PadFile(file *os.File) {
 		//todo
 		return
 	}
-	newFileSize := p.calculateFileSizeWithPadding(position, p.CurrentSize, p.PreAllocSize)
+	newFileSize := p.calculatefileSizeWithPadding(position, p.CurrentSize, p.PreAllocSize)
 	if newFileSize != p.CurrentSize {
 		//todo,填充文件
 		//_, err := file.WriteAt([]byte("0"), newFileSize)
@@ -38,14 +38,14 @@ func (p *FilePadding) PadFile(file *os.File) {
 	计算是否需要扩容
 	若需要，则扩充为2 * PreAllocSize
 */
-func (p *FilePadding) calculateFileSizeWithPadding(position, filesize, preAllocSize int64) int64 {
-	if (preAllocSize >0 && position + 4096 >= filesize) {
-		if (position > filesize) {
-			filesize = position + preAllocSize
-			filesize -= filesize % preAllocSize
+func (p *FilePadding) calculatefileSizeWithPadding(position, fileSize, preAllocSize int64) int64 {
+	if (preAllocSize >0 && position + 4096 >= fileSize) {
+		if (position > fileSize) {
+			fileSize = position + preAllocSize
+			fileSize -= fileSize % preAllocSize
 		} else {
-			filesize += preAllocSize
+			fileSize += preAllocSize
 		}
 	}
-	return filesize
+	return fileSize
 }
