@@ -1,6 +1,7 @@
 package server
 
 import (
+	"fmt"
 	"net"
 )
 
@@ -20,7 +21,8 @@ type Handler struct {
 	ZookeeperServer *ZookeeperServer
 }
 
-func (this *Handler) Handle(conn net.Conn) {
-	protocol := NewProtolcol(this.ZookeeperServer, conn)
+func (s *Handler) Handle(conn net.Conn) {
+	fmt.Println("new conn")
+	protocol := NewProtolcol(s.ZookeeperServer, conn)
 	protocol.Loop()
 }

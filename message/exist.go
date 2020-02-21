@@ -1,7 +1,5 @@
 package message
 
-import "gozk/server"
-
 /**
  * @Author: jiajianyun@jd.com
  * @Description:
@@ -16,5 +14,5 @@ type ExistsRequest struct {
 }
 
 type ExistResponse struct {
-	Stat *server.Stat
+	Stat *Stat
 }

@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"testing"
 	"time"
-
-	"github.com/samuel/go-zookeeper/zk"
 )
 
 /**
@@ -17,19 +15,20 @@ import (
  */
 
 func TestZkConn_GetChildrens(t *testing.T) {
-	hosts := []string{"localhost:2181"}
+	hosts := []string{"localhost:2182"}
 	zkConn, err := NewZkConn(hosts, time.Second * 5)
 	if err != nil {
 		fmt.Println(err)
 	}
-	fmt.Println(zkConn.GetChildrens("/test"))
-
-	result, err := zkConn.CreateNode("/test/lock", []byte("lock data"), zk.FlagSequence)
-
-	if err != nil {
-		fmt.Println(err)
-	}
-	fmt.Println(zkConn.GetChildrens("/test"))
-	fmt.Println(result)
+	fmt.Println(zkConn)
+	//fmt.Println(zkConn.GetChildrens("/test"))
+	//
+	//result, err := zkConn.CreateNode("/test/lock", []byte("lock data"), zk.FlagSequence)
+	//
+	//if err != nil {
+	//	fmt.Println(err)
+	//}
+	//fmt.Println(zkConn.GetChildrens("/test"))
+	//fmt.Println(result)
 }
 

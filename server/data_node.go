@@ -1,5 +1,7 @@
 package server
 
+import "gozk/message"
+
 /**
  * @Author: jiajianyun@jd.com
  * @Description:
@@ -13,7 +15,7 @@ type DataNode struct {
 	Data     []byte
 	Acl      int64
 	Children []string
-	Stat     *Stat
+	Stat     *message.Stat
 }
 
 func (this *DataNode) AddChildren(child string) {

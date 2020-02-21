@@ -12,7 +12,6 @@ import (
 
 	"gozk/message"
 	"gozk/persistence"
-	"gozk/session"
 )
 
 /**
@@ -25,10 +24,10 @@ import (
 
 type ZookeeperServer struct {
 	sync.RWMutex
-	ExpirationInterval        int
+	ExpirationInterval        int32
 	MinSessionTimeout         int32
 	MaxSessionTimeout         int32
-	SessionTracker            *session.SessionTracker
+	SessionTracker            *SessionTracker
 	State                     int32
 	FirstProcessor            ProcessorInterface
 	FileTxnLog                *persistence.FileTxnLog
@@ -36,6 +35,7 @@ type ZookeeperServer struct {
 	OutstandingChangesForPath map[string]*ChangeRecord
 	DataTree                  *DataTree
 	Zxid                      int64
+	Protolcols                map[int64]*Protolcol
 	//todo
 	//private final AtomicLong hzxid = new AtomicLong(0)
 	//static final private long superSecret = 0XB3415C00L
@@ -48,20 +48,30 @@ type ZookeeperServer struct {
 type ChangeRecord struct {
 	Zxid          int64
 	Path          string
-	Stat          *Stat
+	Stat          *message.Stat
 	ChildrenCount int32
 	Acl           []*message.ACL
 }
 
-func NewZookeeperServer(minSessionTimeout, maxSessionTimeout int32, expirationInterval int) *ZookeeperServer {
+func NewZookeeperServer(minSessionTimeout, maxSessionTimeout, expirationInterval int32) *ZookeeperServer {
 	zookeeperServer := &ZookeeperServer{
-		ExpirationInterval: expirationInterval,
-		MinSessionTimeout:  minSessionTimeout,
-		MaxSessionTimeout:  maxSessionTimeout,
-		State:              ZKINITIAL,
-		FirstProcessor:     &PrepRequestProcessor{},
-		DataTree:           NewDataTree(),
+		ExpirationInterval:        expirationInterval,
+		MinSessionTimeout:         minSessionTimeout,
+		MaxSessionTimeout:         maxSessionTimeout,
+		State:                     ZKINITIAL,
+		FirstProcessor:            &PrepRequestProcessor{},
+		DataTree:                  NewDataTree(),
+		OutstandingChanges:        make([]*ChangeRecord, 0),
+		OutstandingChangesForPath: make(map[string]*ChangeRecord),
+		Protolcols:                make(map[int64]*Protolcol),
 	}
+	fileTxnLog := &persistence.FileTxnLog{
+		Buf: make([]byte, 65),
+		FilePandding: &persistence.FilePadding{
+			PreAllocSize: 65535 * 1024,
+		},
+	}
+	zookeeperServer.FileTxnLog = fileTxnLog
 	zookeeperServer.CreateSessionTracker()
 	return zookeeperServer
 }
@@ -69,7 +79,7 @@ func NewZookeeperServer(minSessionTimeout, maxSessionTimeout int32, expirationIn
 func (s *ZookeeperServer) Run() error {
 	s.StartSessionTracker()
 	s.setupRequestProcessors()
-	listener, _ := net.Listen("tcp", ":2181")
+	listener, _ := net.Listen("tcp", "localhost:2182")
 	handler := &Handler{ZookeeperServer: s}
 	err := TCPServer(listener, handler)
 	if err != nil {
@@ -79,7 +89,7 @@ func (s *ZookeeperServer) Run() error {
 }
 
 func (s *ZookeeperServer) CreateSessionTracker() {
-	sessionTracker := session.NewSessionTracker(s.ExpirationInterval, 0)
+	sessionTracker := NewSessionTracker(s.ExpirationInterval, 0, s)
 	s.SessionTracker = sessionTracker
 }
 
@@ -166,11 +176,15 @@ func (s *ZookeeperServer) createSession(protolcol *Protolcol, password []byte, s
 		Protocol:   protolcol,
 		CreateTime: time.Now().UnixNano(),
 	}
+	s.Protolcols[protolcol.SessionId] = protolcol
 	s.submitRequest(request)
 }
 
 func (s *ZookeeperServer) submitRequest(request *Request) {
-	s.touch(request.Protocol)
+	if err := s.touch(request.Protocol); err != nil {
+		//todo, drop this request, because session is missing
+		return
+	}
 	s.FirstProcessor.ProcessRequest(request)
 }
 
@@ -183,21 +197,25 @@ func (s *ZookeeperServer) GetNextZxid() int64 {
 }
 
 func (s *ZookeeperServer) setupRequestProcessors() {
-	final := NewFinalRequestProcessor(s)
-	syncP := NewSyncRequestProcessor(s, final)
+	finalP := NewFinalRequestProcessor(s)
+	syncP := NewSyncRequestProcessor(s, finalP)
 	syncP.Run()
-	prep := NewPrepRequestProcessor(s, syncP)
-	prep.Run()
-	s.FirstProcessor = prep
+	prepP := NewPrepRequestProcessor(s, syncP)
+	prepP.Run()
+	s.FirstProcessor = prepP
 }
 
-func (s *ZookeeperServer) touch(protolcol *Protolcol) {
+func (s *ZookeeperServer) touch(protolcol *Protolcol) error {
+	if protolcol == nil {
+		return nil
+	}
 	sessionId := protolcol.SessionId
 	sessionTimeout := protolcol.SessionTimeout
 	if !s.SessionTracker.TouchSession(sessionId, sessionTimeout) {
 		//todo, error待定义
-		return
+		return nil
 	}
+	return nil
 }
 
 func (s *ZookeeperServer) finishSessionInit(protolcol *Protolcol) error {
@@ -238,6 +256,26 @@ func (s *ZookeeperServer) ProcessTxn(header *txn.TxnHeader, record interface{}) 
 	return result
 }
 
-func (s *ZookeeperServer) LastProcessedZxid()int64 {
+func (s *ZookeeperServer) LastProcessedZxid() int64 {
 	return s.DataTree.LastProcessedZxid
+}
+
+func (s *ZookeeperServer) Expire(session *Session) {
+	sessionId := session.SessionId
+	request := &Request{
+		SessionId: sessionId,
+		Cxid:      0,
+		Type:      OpCloseSession,
+		Data:      nil,
+		Protocol:  nil,
+		TxnHeader: nil,
+		Record:    nil,
+		AuthInfo:  nil,
+		Zxid:      0,
+	}
+	s.submitRequest(request)
+}
+
+func (s *ZookeeperServer) removeProtocol(protolcol *Protolcol) {
+	s.DataTree.removeProtocol(protolcol)
 }

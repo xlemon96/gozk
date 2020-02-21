@@ -1,9 +1,5 @@
 package server
 
-import (
-	"math/rand"
-)
-
 /**
  * @Author: jiajianyun@jd.com
  * @Description:
@@ -40,7 +36,8 @@ func (s *SyncRequestProcessor) Run() {
 
 func (s *SyncRequestProcessor) loop() {
 	logCount := 0
-	s.randRoll = rand.Intn(s.snapCount / 2)
+	//rand.Seed(time.Now().UnixNano())
+	s.randRoll = s.snapCount/2
 	for {
 		var request *Request
 		select {
@@ -48,7 +45,7 @@ func (s *SyncRequestProcessor) loop() {
 			if s.zookeeperServer.FileTxnLog.Append(request.TxnHeader, request.Record) {
 				logCount++
 				if logCount > (s.randRoll + s.snapCount/2) {
-					s.randRoll = rand.Intn(s.snapCount / 2)
+					s.randRoll = s.snapCount/2
 					if err := s.zookeeperServer.FileTxnLog.RollLog(); err != nil {
 						//todo, print err
 						s.stopChan <- struct{}{}

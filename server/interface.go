@@ -12,3 +12,7 @@ type ProcessorInterface interface {
 	ProcessRequest(request *Request)
 	ShutDown()
 }
+
+type SessionExpirer interface {
+	Expire(session *Session)
+}

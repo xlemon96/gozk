@@ -1,7 +1,5 @@
 package message
 
-import "gozk/server"
-
 /**
  * @Author: jiajianyun@jd.com
  * @Description:
@@ -32,12 +30,12 @@ type GetChildre2Request struct {
 
 type GetDataResponse struct {
 	Data []byte
-	Stat *server.Stat
+	Stat *Stat
 }
 
 type GetAclResponse struct {
 	Acl  []*ACL
-	Stat *server.Stat
+	Stat *Stat
 }
 
 type GetChildrenResponse struct {
@@ -46,5 +44,5 @@ type GetChildrenResponse struct {
 
 type GetChildren2Response struct {
 	Childrens []string
-	Stat      *server.Stat
+	Stat      *Stat
 }

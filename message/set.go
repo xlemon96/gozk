@@ -1,7 +1,5 @@
 package message
 
-import "gozk/server"
-
 /**
  * @Author: jiajianyun@jd.com
  * @Description:
@@ -17,10 +15,22 @@ type SetWatchesRequest struct {
 	ChildWatches []string
 }
 
-type SetDataResponse struct {
-	Stat *server.Stat
+type SetDataRequest struct {
+	Path    string
+	Data    []byte
+	Version int32
 }
 
-type SetDAclResponse struct {
-	Stat *server.Stat
+type SetAclRequest struct {
+	Path    string
+	Acl     []ACL
+	Version int32
+}
+
+type SetDataResponse struct {
+	Stat *Stat
+}
+
+type SetAclResponse struct {
+	Stat *Stat
 }

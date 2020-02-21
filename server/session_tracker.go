@@ -1,4 +1,4 @@
-package session
+package server
 
 import (
 	"fmt"
@@ -15,28 +15,30 @@ import (
  */
 
 type SessionTracker struct {
-	//session map
-	Sessions                      map[int64]*Session
+	//session map, key is sessionId, value is session of ptr
+	Sessions map[int64]*Session
 	//key is expirationTime, value is  map that key is ptr of Session and value is bool
 	SessionWithSameExpirationTime map[int64]map[*Session]bool
 	//key id sessionid and value is timeout
-	SessionsWithTimeout           map[int64]int32
+	SessionsWithTimeout map[int64]int32
 
 	//next session id and expirationtime
 	nextSessionId      int64
 	nextExpirationTime int64
 
 	//expiration interval
-	expirationInterval int
+	expirationInterval int32
 
 	//SessionTracker running flag
 	running bool
+
+	Expire SessionExpirer
 
 	//lock
 	sync.RWMutex
 }
 
-func NewSessionTracker(expirationInterval int, id int64) *SessionTracker {
+func NewSessionTracker(expirationInterval int32, id int64, expire SessionExpirer) *SessionTracker {
 	//expirationInterval Second convert to Nanosecond (Second = 1000 * 1000 * 1000 Nanosecond)
 	interval := expirationInterval * 1000 * 1000 * 1000
 	sessionTracker := &SessionTracker{
@@ -44,6 +46,7 @@ func NewSessionTracker(expirationInterval int, id int64) *SessionTracker {
 		SessionWithSameExpirationTime: make(map[int64]map[*Session]bool),
 		SessionsWithTimeout:           make(map[int64]int32),
 		expirationInterval:            interval,
+		Expire:                        expire,
 		running:                       true,
 	}
 	sessionTracker.nextExpirationTime = sessionTracker.RoundToInterval(time.Now().UnixNano())
@@ -52,70 +55,70 @@ func NewSessionTracker(expirationInterval int, id int64) *SessionTracker {
 }
 
 //主循环，定期失效session
-func (this *SessionTracker) Run() {
+func (s *SessionTracker) Run() {
 	go func() {
-		for this.running {
+		for s.running {
 			currentTime := time.Now().UnixNano()
 			//未达到失效时间，则休眠到失效时间，失效session
-			if this.nextExpirationTime > currentTime {
-				sleepTime := time.Duration(this.nextExpirationTime - currentTime)
+			if s.nextExpirationTime > currentTime {
+				sleepTime := time.Duration(s.nextExpirationTime - currentTime)
 				time.Sleep(sleepTime * time.Nanosecond)
 				continue
 			}
-			sessionItems, ok := this.SessionWithSameExpirationTime[this.nextExpirationTime]
+			sessionItems, ok := s.SessionWithSameExpirationTime[s.nextExpirationTime]
 			if ok {
-				delete(this.SessionWithSameExpirationTime, this.nextExpirationTime)
+				delete(s.SessionWithSameExpirationTime, s.nextExpirationTime)
 				for sessionItem, _ := range sessionItems {
 					fmt.Printf("expire session: %d, expireTime: %d \n", sessionItem.SessionId, sessionItem.ExpireTime)
-					this.SetSessionClosing(sessionItem.SessionId)
-					//todo, expire the session
+					s.SetSessionClosing(sessionItem.SessionId)
+					s.Expire.Expire(sessionItem)
 				}
 			}
-			this.nextExpirationTime += int64(this.expirationInterval)
+			s.nextExpirationTime += int64(s.expirationInterval)
 		}
 	}()
 }
 
-func (this *SessionTracker) CreateSession(timeout int32) int64 {
-	this.AddSession(this.nextSessionId, timeout)
-	this.nextSessionId++
-	return this.nextSessionId
+func (s *SessionTracker) CreateSession(timeout int32) int64 {
+	s.AddSession(s.nextSessionId, timeout)
+	s.nextSessionId++
+	return s.nextSessionId
 }
 
-func (this *SessionTracker) AddSession(id int64, timeout int32) {
-	this.SessionsWithTimeout[id] = timeout
-	if _, ok := this.Sessions[id]; !ok {
+func (s *SessionTracker) AddSession(id int64, timeout int32) {
+	s.SessionsWithTimeout[id] = timeout
+	if _, ok := s.Sessions[id]; !ok {
 		session := NewSession(id, 0, timeout)
-		this.Sessions[id] = session
+		s.Sessions[id] = session
 	}
-	this.TouchSession(id, timeout)
+	s.TouchSession(id, timeout)
 }
 
-func (this *SessionTracker) TouchSession(id int64, timeout int32) bool {
-	session, ok := this.Sessions[id]
+func (s *SessionTracker) TouchSession(id int64, timeout int32) bool {
+	session, ok := s.Sessions[id]
 	if !ok || session.IsClosing {
 		return false
 	}
-	expireTime := this.RoundToInterval(time.Now().UnixNano())
+	expireTime := s.RoundToInterval(time.Now().UnixNano())
 	if session.ExpireTime > expireTime {
 		return true
 	}
-	sessionMap, ok := this.SessionWithSameExpirationTime[session.ExpireTime]
+	sessionMap, ok := s.SessionWithSameExpirationTime[session.ExpireTime]
 	if ok {
 		delete(sessionMap, session)
 	}
 	session.ExpireTime = expireTime
-	sessionMap, ok = this.SessionWithSameExpirationTime[session.ExpireTime]
+	sessionMap, ok = s.SessionWithSameExpirationTime[session.ExpireTime]
 	if !ok {
 		item := make(map[*Session]bool)
-		this.SessionWithSameExpirationTime[expireTime] = item
+		s.SessionWithSameExpirationTime[expireTime] = item
 	}
-	this.SessionWithSameExpirationTime[session.ExpireTime][session] = true
+	s.SessionWithSameExpirationTime[session.ExpireTime][session] = true
 	return true
 }
 
-func (this *SessionTracker) CheckSession(id int64, owner interface{}) bool {
-	session, ok := this.Sessions[id]
+func (s *SessionTracker) CheckSession(id int64, owner interface{}) bool {
+	session, ok := s.Sessions[id]
 	if !ok || session.IsClosing {
 		return false
 	}
@@ -129,27 +132,27 @@ func (this *SessionTracker) CheckSession(id int64, owner interface{}) bool {
 	return true
 }
 
-func (this *SessionTracker) RemoveSession(id int64) {
-	session, ok := this.Sessions[id]
+func (s *SessionTracker) RemoveSession(id int64) {
+	session, ok := s.Sessions[id]
 	if ok {
-		sessionItems, ok := this.SessionWithSameExpirationTime[id]
+		sessionItems, ok := s.SessionWithSameExpirationTime[id]
 		if ok {
 			delete(sessionItems, session)
 		}
 	}
-	delete(this.Sessions, id)
-	delete(this.SessionsWithTimeout, id)
+	delete(s.Sessions, id)
+	delete(s.SessionsWithTimeout, id)
 }
 
-func (this *SessionTracker) SetSessionClosing(id int64) {
-	session := this.Sessions[id]
+func (s *SessionTracker) SetSessionClosing(id int64) {
+	session := s.Sessions[id]
 	if session != nil {
 		session.IsClosing = false
 	}
 }
 
-func (this *SessionTracker) SetOwner(id int64, owner interface{}) error {
-	session ,ok := this.Sessions[id]
+func (s *SessionTracker) SetOwner(id int64, owner interface{}) error {
+	session, ok := s.Sessions[id]
 	if !ok {
 		//todo, error待定义
 		return nil
@@ -158,18 +161,19 @@ func (this *SessionTracker) SetOwner(id int64, owner interface{}) error {
 	return nil
 }
 
-func (this *SessionTracker) RoundToInterval(time int64) int64 {
-	tmpExpirationInterval := int64(this.expirationInterval)
+func (s *SessionTracker) RoundToInterval(time int64) int64 {
+	//tmpTime := time * 1000 * 1000 * 1000
+	tmpExpirationInterval := int64(s.expirationInterval)
 	return (time/tmpExpirationInterval + 1) * tmpExpirationInterval
 }
 
-func (this *SessionTracker) InitNextSession(id int64) int64 {
+func (s *SessionTracker) InitNextSession(id int64) int64 {
 	nextSid := 0
 	return int64(nextSid)
 }
 
-func (this *SessionTracker) ShutDown() {
-	this.Lock()
-	defer this.Unlock()
-	this.running = false
+func (s *SessionTracker) ShutDown() {
+	s.Lock()
+	defer s.Unlock()
+	s.running = false
 }

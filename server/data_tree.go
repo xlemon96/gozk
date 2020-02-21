@@ -33,7 +33,7 @@ type ProcessTxnResult struct {
 	Err      int32
 	Type     int32
 	Path     string
-	Stat     *Stat
+	Stat     *message.Stat
 }
 
 func NewDataTree() *DataTree {
@@ -46,7 +46,7 @@ func NewDataTree() *DataTree {
 		Data:     nil,
 		Acl:      -1,
 		Children: make([]string, 0),
-		Stat:     &Stat{},
+		Stat:     &message.Stat{},
 	}
 	dataTree.Nodes["/"] = dataTree.Root
 	dataTree.Nodes[""] = dataTree.Root
@@ -118,7 +118,7 @@ func (s *DataTree) CreateNode(path string, data []byte, acl []*message.ACL, ephe
 	lastSlash := strings.LastIndex(path, "/")
 	parentName := path[:lastSlash]
 	childName := path[lastSlash+1:]
-	stat := &Stat{
+	stat := &message.Stat{
 		Czxid:          zxid,
 		Mzxid:          zxid,
 		Ctime:          time,
@@ -233,7 +233,7 @@ func (s *DataTree) SetData(path string, data []byte, zxid, time int64, version i
 	s.DataWatches.TriggerWatch(path, EventNodeDataChanged)
 }
 
-func (s *DataTree) GetData(path string, stat *Stat, protolcol *Protolcol) []byte {
+func (s *DataTree) GetData(path string, stat *message.Stat, protolcol *Protolcol) []byte {
 	s.Lock()
 	defer s.Unlock()
 	node, ok := s.Nodes[path]
@@ -248,7 +248,7 @@ func (s *DataTree) GetData(path string, stat *Stat, protolcol *Protolcol) []byte
 	return node.Data
 }
 
-func (s *DataTree) StatNode(path string, protolcol *Protolcol) *Stat {
+func (s *DataTree) StatNode(path string, protolcol *Protolcol) *message.Stat {
 	s.Lock()
 	defer s.Unlock()
 	node, ok := s.Nodes[path]
@@ -263,7 +263,7 @@ func (s *DataTree) StatNode(path string, protolcol *Protolcol) *Stat {
 	return node.Stat
 }
 
-func (s *DataTree) GetChildren(path string, stat *Stat, protolcol *Protolcol) []string {
+func (s *DataTree) GetChildren(path string, stat *message.Stat, protolcol *Protolcol) []string {
 	s.Lock()
 	defer s.Unlock()
 	node, ok := s.Nodes[path]

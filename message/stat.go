@@ -1,11 +1,11 @@
-package server
+package message
 
 /**
  * @Author: jiajianyun@jd.com
  * @Description:
- * @File:  data_node_stat
+ * @File:  stat
  * @Version: 1.0.0
- * @Date: 2020/2/18 10:35 上午
+ * @Date: 2020/2/21 11:05 上午
  */
 
 type Stat struct {
@@ -21,3 +21,4 @@ type Stat struct {
 	NumChildren    int32 // The number of children of this znode.
 	Pzxid          int64 // last modified children
 }
+

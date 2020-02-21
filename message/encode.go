@@ -58,6 +58,31 @@ func encodePacketValue(buf []byte, v reflect.Value) (int, error) {
 				return 0, err
 			}
 		}
+	case reflect.Slice:
+		switch v.Type().Elem().Kind() {
+		default:
+			count := v.Len()
+			startN := n
+			n += 4
+			for i := 0; i < count; i++ {
+				n2, err := encodePacketValue(buf[n:], v.Index(i))
+				n += n2
+				if err != nil {
+					return n, err
+				}
+			}
+			binary.BigEndian.PutUint32(buf[startN:startN+4], uint32(count))
+		case reflect.Uint8:
+			if v.IsNil() {
+				binary.BigEndian.PutUint32(buf[n:n+4], uint32(0xffffffff))
+				n += 4
+			} else {
+				bytes := v.Bytes()
+				binary.BigEndian.PutUint32(buf[n:n+4], uint32(len(bytes)))
+				copy(buf[n+4:n+4+len(bytes)], bytes)
+				n += 4 + len(bytes)
+			}
+		}
 	}
 	return n, nil
 }

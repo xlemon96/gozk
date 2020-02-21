@@ -21,8 +21,8 @@ type FileTxnLog struct {
 	logBuf         *logBuf
 	streamsToFlush []*logBuf
 	lastZxidSeen   int64
-	filePandding   *FilePadding
-	buf            []byte
+	FilePandding   *FilePadding
+	Buf            []byte
 }
 
 type logBuf struct {
@@ -42,7 +42,7 @@ func (p *FileTxnLog) Append(txnHeader *txn.TxnHeader, record interface{}) bool {
 	}
 
 	if p.logBuf == nil {
-		p.logFile, err = os.OpenFile("test", os.O_RDWR, 777)
+		p.logFile, err = os.OpenFile("/Users/jiajianyun/go/src/test/test.txt", os.O_RDWR, 777)
 		if err != nil {
 			//todo
 			return false
@@ -60,12 +60,12 @@ func (p *FileTxnLog) Append(txnHeader *txn.TxnHeader, record interface{}) bool {
 			Version: 0,
 			DbId:    0,
 		}
-		n, err := message.EncodePacket(p.buf[0:], fileHeader)
+		n, err := message.EncodePacket(p.Buf[0:], fileHeader)
 		if err != nil {
 			//todo
 			return false
 		}
-		if _, err := p.logBuf.logBuf.Write(p.buf[0:n]); err != nil {
+		if _, err := p.logBuf.logBuf.Write(p.Buf[0:n]); err != nil {
 			//todo
 			return false
 		}
@@ -74,11 +74,11 @@ func (p *FileTxnLog) Append(txnHeader *txn.TxnHeader, record interface{}) bool {
 			return false
 		}
 		position, _ := p.logFile.Seek(0, 1)
-		p.filePandding.CurrentSize = position
+		p.FilePandding.CurrentSize = position
 		p.streamsToFlush = append(p.streamsToFlush, p.logBuf)
 	}
 
-	p.filePandding.PadFile(p.logFile)
+	p.FilePandding.PadFile(p.logFile)
 	//todo
 	return true
 }

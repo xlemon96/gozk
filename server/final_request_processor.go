@@ -1,6 +1,8 @@
 package server
 
-import "gozk/message"
+import (
+	"gozk/message"
+)
 
 /**
  * @Author: jiajianyun@jd.com
@@ -42,7 +44,14 @@ func (s *FinalRequestProcessor) ProcessRequest(request *Request)  {
 		result = s.ZookeeperServer.ProcessTxn(request.TxnHeader, request.Record)
 	}
 	if request.TxnHeader != nil && request.Type == OpCloseSession {
-		//todo
+		if request.Protocol == nil {
+			protolcol, ok := s.ZookeeperServer.Protolcols[request.SessionId]
+			if ok {
+				if err := protolcol.conn.Close(); err != nil {
+					//todo, print err
+				}
+			}
+		}
 		return
 	}
 	if request.Protocol == nil {
@@ -95,7 +104,7 @@ func (s *FinalRequestProcessor) ProcessRequest(request *Request)  {
 		rsp = &message.SetDataResponse{Stat:result.Stat}
 		err = result.Err
 	case OpSetACL:
-		rsp = &message.SetDAclResponse{Stat:result.Stat}
+		rsp = &message.SetAclResponse{Stat:result.Stat}
 		err = result.Err
 	case OpCloseSession:
 		closeSession = true
@@ -106,12 +115,12 @@ func (s *FinalRequestProcessor) ProcessRequest(request *Request)  {
 		err = result.Err
 	case OpExists:
 		existReq := &message.ExistsRequest{}
-		_, err :=message.Decode(request.Data, existReq)
+		_, err := message.Decode(request.Data, existReq)
 		if err != nil {
 			//todo
 			return
 		}
-		var stat *Stat
+		var stat *message.Stat
 		if existReq.Watch {
 			stat = s.ZookeeperServer.DataTree.StatNode(existReq.Path, protocol)
 		} else {
@@ -120,7 +129,7 @@ func (s *FinalRequestProcessor) ProcessRequest(request *Request)  {
 		rsp = &message.ExistResponse{Stat:stat}
 	case OpGetData:
 		getDataReq := &message.GetDataRequest{}
-		_, err :=message.Decode(request.Data, getDataReq)
+		_, err := message.Decode(request.Data, getDataReq)
 		if err != nil {
 			//todo
 			return
@@ -132,7 +141,7 @@ func (s *FinalRequestProcessor) ProcessRequest(request *Request)  {
 		//PrepRequestProcessor.checkACL(zks, zks.getZKDatabase().aclForNode(n),
 		//	ZooDefs.Perms.READ,
 		//	request.authInfo);
-		stat := new(Stat)
+		stat := new(message.Stat)
 		var data []byte
 		if getDataReq.Watch {
 			data = s.ZookeeperServer.DataTree.GetData(getDataReq.Path, stat, protocol)
@@ -145,7 +154,7 @@ func (s *FinalRequestProcessor) ProcessRequest(request *Request)  {
 		}
 	case OpGetChildren:
 		getChildrenReq := &message.GetChildreRequest{}
-		_, err :=message.Decode(request.Data, getChildrenReq)
+		_, err := message.Decode(request.Data, getChildrenReq)
 		if err != nil {
 			//todo
 			return
@@ -165,7 +174,7 @@ func (s *FinalRequestProcessor) ProcessRequest(request *Request)  {
 		}
 	case OpGetChildren2:
 		getChildren2Req := &message.GetChildreRequest{}
-		_, err :=message.Decode(request.Data, getChildren2Req)
+		_, err := message.Decode(request.Data, getChildren2Req)
 		if err != nil {
 			//todo
 			return
@@ -186,7 +195,7 @@ func (s *FinalRequestProcessor) ProcessRequest(request *Request)  {
 	case OpGetACL:
 	case OpSetWatches:
 		setWatchesReq := &message.SetWatchesRequest{}
-		_, err :=message.Decode(request.Data, setWatchesReq)
+		_, err := message.Decode(request.Data, setWatchesReq)
 		if err != nil {
 			//todo
 			return
