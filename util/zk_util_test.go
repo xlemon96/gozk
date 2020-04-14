@@ -23,12 +23,12 @@ func TestZkConn_GetChildrens(t *testing.T) {
 	fmt.Println(zkConn)
 	//fmt.Println(zkConn.GetChildrens("/test"))
 	//
-	//result, err := zkConn.CreateNode("/test/lock", []byte("lock data"), zk.FlagSequence)
+	//result.txt, err := zkConn.CreateNode("/test/lock", []byte("lock data"), zk.FlagSequence)
 	//
 	//if err != nil {
 	//	fmt.Println(err)
 	//}
 	//fmt.Println(zkConn.GetChildrens("/test"))
-	//fmt.Println(result)
+	//fmt.Println(result.txt)
 }
 

@@ -31,54 +31,54 @@ func NewZkConn(hosts []string, timeout time.Duration) (*ZkConn, error) {
 	return zkConn, nil
 }
 
-func (this *ZkConn) CreateNode(path string, data []byte, flag int32) (string, error) {
-	result, err := this.conn.Create(path, data, flag, zk.WorldACL(zk.PermAll))
+func (u *ZkConn) CreateNode(path string, data []byte, flag int32) (string, error) {
+	result, err := u.conn.Create(path, data, flag, zk.WorldACL(zk.PermAll))
 	if err != nil {
 		return "", err
 	}
 	return result, err
 }
 
-func (this *ZkConn) CreateESNode(path string, acl []zk.ACL) (string, error) {
-	result, err := this.conn.CreateProtectedEphemeralSequential(path, []byte(""), acl)
+func (u *ZkConn) CreateESNode(path string, acl []zk.ACL) (string, error) {
+	result, err := u.conn.CreateProtectedEphemeralSequential(path, []byte(""), acl)
 	if err != nil {
 		return "", err
 	}
 	return result, err
 }
 
-func (this *ZkConn) GetWithWatcher(path string) (string, <-chan zk.Event, error) {
-	result, _, ch, err := this.conn.GetW(path)
+func (u *ZkConn) GetWithWatcher(path string) (string, <-chan zk.Event, error) {
+	result, _, ch, err := u.conn.GetW(path)
 	if err != nil {
 		return "", nil, err
 	}
 	return string(result), ch, nil
 }
 
-func (this *ZkConn) Exist(path string) (bool, error) {
-	exist, _, err := this.conn.Exists(path)
+func (u *ZkConn) Exist(path string) (bool, error) {
+	exist, _, err := u.conn.Exists(path)
 	if err != nil {
 		return false, nil
 	}
 	return exist, nil
 }
 
-func (this *ZkConn) Delete(path string) error {
-	err := this.conn.Delete(path, -1)
+func (u *ZkConn) Delete(path string) error {
+	err := u.conn.Delete(path, -1)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func (this *ZkConn) GetChildrens(parentPath string) ([]string, error) {
-	childrens, _, err := this.conn.Children(parentPath)
+func (u *ZkConn) GetChildrens(parentPath string) ([]string, error) {
+	childrens, _, err := u.conn.Children(parentPath)
 	if err != nil {
 		return nil, err
 	}
 	return childrens, nil
 }
 
-func (this *ZkConn) Close() {
-	this.conn.Close()
+func (u *ZkConn) Close() {
+	u.conn.Close()
 }

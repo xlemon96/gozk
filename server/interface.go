@@ -3,7 +3,7 @@ package server
 /**
  * @Author: jiajianyun@jd.com
  * @Description:
- * @File:  interface
+ * @File:  iface
  * @Version: 1.0.0
  * @Date: 2020/2/5 12:02 下午
  */
